@@ -764,7 +764,11 @@ int sync_user_pages(struct vfpga_dev *device, uint64_t vaddr, uint32_t len, int3
 
 const struct dma_buf_attach_ops gpu_importer_ops = {
     .allow_peer2peer = true,
-    .move_notify = p2p_move_notify 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 1, 0)
+    .invalidate_mappings = p2p_move_notify
+#else
+    .move_notify = p2p_move_notify
+#endif
 };
 
 void p2p_move_notify(struct dma_buf_attachment *attach) {
@@ -971,10 +975,13 @@ err_card_unmap:
     vfree(user_pg->hpages);
     vfree(user_pg->cpages);
 err_sglist:
+    dma_resv_lock(buf->resv, NULL);
+    dma_buf_unmap_attachment(user_pg->dma_attach, user_pg->sgt, DMA_BIDIRECTIONAL);
+    dma_resv_unlock(buf->resv);
 err_sg:
     dma_buf_detach(buf, user_pg->dma_attach);
 err_attach:
-    kfree(user_pg->dma_attach->importer_priv);
+    kfree(importer_priv);
 err_not_private:
     dma_buf_put(buf);
 err_dma_buf:
